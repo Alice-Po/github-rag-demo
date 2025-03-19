@@ -1,0 +1,25 @@
+{
+  "name": "github-rag-ethical",
+  "version": "1.0.0",
+  "description": "A RAG initiative for AV project base on open source et european projects",
+  "main": "github-rag.js",
+  "type": "module",
+  "scripts": {
+    "start": "node github-rag.js"
+  },
+  "dependencies": {
+    "@huggingface/inference": "^2.6.4",
+    "@qdrant/js-client-rest": "^1.13.0",
+    "@xenova/transformers": "^2.15.1",
+    "langchain": "^0.1.21"
+  },
+  "keywords": [
+    "rag",
+    "github",
+    "code-assistant",
+    "ethical-ai",
+    "open-source"
+  ],
+  "author": "",
+  "license": "MIT"
+}
