@@ -5,13 +5,15 @@
   "main": "github-rag.js",
   "type": "module",
   "scripts": {
-    "start": "node github-rag.js"
+    "start": "node github-rag.js",
+    "ask": "node ask.js"
   },
   "dependencies": {
     "@huggingface/inference": "^2.6.4",
     "@qdrant/js-client-rest": "^1.13.0",
     "@xenova/transformers": "^2.15.1",
-    "langchain": "^0.1.21"
+    "langchain": "^0.1.21",
+    "dotenv": "^16.3.1"
   },
   "keywords": [
     "rag",

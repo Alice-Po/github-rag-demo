@@ -24,19 +24,26 @@ HF_TOKEN=votre_token_huggingface
 3. Lancer le conteneur
 
 ```bash
-docker-compose up --build
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Pour suivre les logs du conteneur, exécuter :
+
+```bash
+docker logs rag-av-qdrant-1
 ```
 
 ## Utilisation
 
-1. Ouvrir un terminal et lancer la commande suivante
+L'application va :
 
-```bash
-npm install
-```
+1. Cloner les dépôts spécifiés
+2. Indexer le code dans Qdrant
+3. Démarrer une interface en ligne de commande pour poser des questions
 
-2. Lancer l'assistant
+## Structure du projet
 
-```bash
-npm start
-```
+- `github-rag.js`: Script principal pour l'assistant RAG
+- `docker-compose.yml`: Fichier de configuration Docker
+- `.env`: Fichier pour stocker le token HuggingFace
+- `github_repos`: Dossier pour stocker les dépôts GitHub clonés
