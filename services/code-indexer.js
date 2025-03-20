@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { shouldProcessFile, shouldExcludeDirectory } from '../utils.js';
+import { exec } from 'child_process';
 
 /**
  * @class CodeIndexer
@@ -24,18 +25,48 @@ export class CodeIndexer {
    * Chaque document contient le contenu du fichier et ses métadonnées (chemin, dépôt, etc.)
    */
   async indexRepositories() {
-    let documents = [];
-    const repos = fs.readdirSync(this.reposDir);
+    const allDocuments = [];
 
-    for (const repoName of repos) {
-      const repoPath = path.join(this.reposDir, repoName);
-      if (fs.statSync(repoPath).isDirectory()) {
-        console.log(`Indexation du dépôt ${repoName}...`);
-        documents = [...documents, ...this.traverseDirectory(repoPath, repoName)];
+    // Créer le répertoire des dépôts s'il n'existe pas
+    if (!fs.existsSync(this.reposDir)) {
+      fs.mkdirSync(this.reposDir, { recursive: true });
+    }
+
+    // Charger la configuration des dépôts
+    const repos = JSON.parse(process.env.GITHUB_REPOS);
+    if (!repos || !Array.isArray(repos)) {
+      throw new Error('Configuration des dépôts invalide');
+    }
+
+    // Indexer chaque dépôt
+    for (const repo of repos) {
+      if (!repo.url || !repo.name) {
+        console.warn('⚠️ Dépôt mal configuré, ignoré:', repo);
+        continue;
+      }
+
+      console.log(`\nIndexation de ${repo.name}...`);
+      const repoPath = path.join(this.reposDir, repo.name);
+
+      try {
+        // Cloner ou mettre à jour le dépôt
+        if (!fs.existsSync(repoPath)) {
+          console.log(`Clonage de ${repo.url}...`);
+          await exec(`git clone ${repo.url} ${repoPath}`);
+        } else {
+          console.log(`Mise à jour de ${repo.name}...`);
+          await exec('git pull', { cwd: repoPath });
+        }
+
+        // Indexer les fichiers du dépôt
+        const documents = this.traverseDirectory(repoPath, repo.name);
+        allDocuments.push(...documents);
+      } catch (error) {
+        console.error(`❌ Erreur lors de l'indexation de ${repo.name}:`, error);
       }
     }
 
-    return documents;
+    return allDocuments;
   }
 
   /**
@@ -50,36 +81,74 @@ export class CodeIndexer {
    * 3. Traite les fichiers avec les extensions configurées
    * 4. Extrait le contenu et les métadonnées de chaque fichier
    */
-  traverseDirectory(dirPath, repoName) {
-    const documents = [];
-    const files = fs.readdirSync(dirPath);
+  traverseDirectory(dirPath, repoName, documents = []) {
+    const entries = fs.readdirSync(dirPath);
 
-    for (const file of files) {
-      const filePath = path.join(dirPath, file);
-      const stat = fs.statSync(filePath);
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry);
+      const stat = fs.statSync(fullPath);
 
-      if (stat.isDirectory() && !shouldExcludeDirectory(file)) {
-        documents.push(...this.traverseDirectory(filePath, repoName));
-      } else if (stat.isFile() && shouldProcessFile(filePath)) {
+      if (stat.isDirectory()) {
+        if (!shouldExcludeDirectory(entry)) {
+          this.traverseDirectory(fullPath, repoName, documents);
+        }
+      } else if (stat.isFile() && shouldProcessFile(entry)) {
         try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          const relativePath = path.relative(path.join(this.reposDir, repoName), filePath);
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const relativePath = path.relative(path.join(this.reposDir, repoName), fullPath);
 
           documents.push({
             pageContent: content,
             metadata: {
-              source: filePath,
               repo: repoName,
               path: relativePath,
-              extension: path.extname(filePath).toLowerCase(),
+              size: stat.size,
+              modified: stat.mtime,
             },
           });
         } catch (error) {
-          console.error(`Erreur lors de la lecture de ${filePath}:`, error.message);
+          console.warn(`⚠️ Impossible de lire le fichier ${fullPath}:`, error.message);
         }
       }
     }
 
     return documents;
+  }
+
+  async indexRepository(repoUrl, repoName) {
+    const repoPath = path.join(this.reposDir, repoName);
+
+    try {
+      // S'assurer que le répertoire parent existe
+      await fs.promises.mkdir(this.reposDir, { recursive: true });
+
+      // Cloner ou mettre à jour le dépôt
+      if (!fs.existsSync(repoPath)) {
+        console.log(`Clonage de ${repoUrl}...`);
+        await new Promise((resolve, reject) => {
+          exec(`git clone ${repoUrl} ${repoPath}`, (error) => {
+            if (error) reject(error);
+            else resolve();
+          });
+        });
+      } else {
+        console.log(`Mise à jour de ${repoName}...`);
+        await new Promise((resolve, reject) => {
+          exec('git pull', { cwd: repoPath }, (error) => {
+            if (error) reject(error);
+            else resolve();
+          });
+        });
+      }
+
+      // Attendre un peu pour s'assurer que les fichiers sont bien écrits
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Indexer les fichiers du dépôt
+      return this.traverseDirectory(repoPath, repoName);
+    } catch (error) {
+      console.error(`❌ Erreur lors de l'indexation de ${repoName}:`, error);
+      return [];
+    }
   }
 }
