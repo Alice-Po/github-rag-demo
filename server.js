@@ -12,6 +12,8 @@ dotenv.config();
 if (!process.env.HF_TOKEN) {
   console.error("⚠️ HF_TOKEN manquant dans les variables d'environnement");
   process.exit(1);
+} else {
+  console.log("HF_TOKEN présent dans les variables d'environnement");
 }
 
 const app = express();
@@ -70,9 +72,11 @@ app.post('/ask', async (req, res) => {
       throw new Error('Question invalide');
     }
 
+    console.log("Début de la génération de l'embedding...");
     const questionEmbedding = await documentProcessor.generateEmbedding(question);
     console.log('Embedding généré');
 
+    console.log('Début de la recherche dans Qdrant...');
     const searchResults = await qdrant.searchSimilar('github_code', questionEmbedding.data, 5);
     console.log('Résultats de recherche:', searchResults.length);
 
@@ -100,7 +104,7 @@ app.post('/ask', async (req, res) => {
     res.json({
       answer,
       context,
-      repoUrl, // Ajouter l'URL du dépôt à la réponse
+      //   repoUrl, // Ajouter l'URL du dépôt à la réponse
     });
   } catch (error) {
     console.error('Error détaillée:', error);
