@@ -1,89 +1,132 @@
 /**
- * Parse une réponse contenant des balises XML et extrait les différentes sections
- * @param {string} text - Le texte à parser
- * @returns {Object} Un objet contenant les différentes sections
+ * Response Parser Module
+ *
+ * This module handles parsing of AI responses that contain XML tags and code blocks.
+ *
+ * @module responseParser
+ */
+
+/**
+ * Parses a response containing XML tags and extracts different sections
+ *
+ * @param {string} text - The raw response text to parse
+ * @returns {ResponseSections} An object containing the parsed sections
+ *
+ * @typedef {Object} ResponseSections
+ * @property {string} instructions - Parsed instructions section
+ * @property {string} context - Parsed context section
+ * @property {string} question - Parsed question section
+ * @property {string} answer - Parsed answer section
+ *
+ * @example
+ * const response = parseResponse(`
+ *   <instructions>Follow these steps...</instructions>
+ *   <answer>Here's the solution...</answer>
+ * `);
+ * console.log(response.instructions); // "Follow these steps..."
  */
 export const parseResponse = (text) => {
-  // Vérifier si le texte est défini
   if (!text) {
-    console.warn('Texte de réponse non défini');
+    console.warn('Response text is undefined');
     return {
       instructions: '',
       context: '',
       question: '',
-      answer: 'Désolé, une erreur est survenue lors de la génération de la réponse.',
+      answer: 'Sorry, an error occurred while generating the response.',
     };
   }
 
-  const sections = {};
-
-  // Fonction helper pour extraire le contenu entre les balises
+  // Helper function to extract content between XML tags
   const extractContent = (tag) => {
     try {
       const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\/${tag}>`);
       const match = text.match(regex);
       return match ? parseCodeBlocks(match[1].trim()) : '';
     } catch (error) {
-      console.error(`Erreur lors de l'extraction du contenu pour le tag ${tag}:`, error);
+      console.error(`Error extracting content for tag ${tag}:`, error);
       return '';
     }
   };
 
-  // Extraire les différentes sections
-  sections.instructions = extractContent('instructions');
-  sections.context = extractContent('context');
-  sections.question = extractContent('question');
-  sections.answer = extractContent('answer');
-
-  return sections;
+  return {
+    instructions: extractContent('instructions'),
+    context: extractContent('context'),
+    question: extractContent('question'),
+    answer: extractContent('answer'),
+  };
 };
 
 /**
- * Parse le texte pour identifier les blocs de code
- * @param {string} text - Le texte à parser
- * @returns {Array} Un tableau d'objets représentant le texte et les blocs de code
+ * Parses text to identify and structure code blocks
+ *
+ * @param {string} text - The text containing code blocks
+ * @returns {Array<TextBlock>} An array of text and code block objects
+ *
+ * @typedef {Object} TextBlock
+ * @property {'text' | 'code'} type - The type of block
+ * @property {string} content - The content of the block
+ * @property {string} [language] - The programming language (for code blocks)
+ *
+ * @example
+ * const blocks = parseCodeBlocks(`
+ *   Some text
+ *   \`\`\`javascript
+ *   console.log('Hello');
+ *   \`\`\`
+ * `);
  */
 export const parseCodeBlocks = (text) => {
   const parts = [];
   const codeBlockRegex = /```(?:(\w+)\n)?([\s\S]*?)```/g;
   let lastIndex = 0;
-  let match;
 
-  while ((match = codeBlockRegex.exec(text)) !== null) {
-    // Ajouter le texte avant le bloc de code
+  for (const match of text.matchAll(codeBlockRegex)) {
+    // Add text before code block if exists
     if (match.index > lastIndex) {
-      parts.push({
-        type: 'text',
-        content: text.slice(lastIndex, match.index).trim(),
-      });
+      const textContent = text.slice(lastIndex, match.index).trim();
+      if (textContent) {
+        parts.push({ type: 'text', content: textContent });
+      }
     }
 
-    // Ajouter le bloc de code
+    // Add code block
+    const [, language = 'javascript', content] = match;
     parts.push({
       type: 'code',
-      language: match[1] || 'javascript',
-      content: match[2].trim(),
+      language,
+      content: content.trim(),
     });
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Ajouter le reste du texte
-  if (lastIndex < text.length) {
-    parts.push({
-      type: 'text',
-      content: text.slice(lastIndex).trim(),
-    });
+  // Add remaining text if exists
+  const remainingText = text.slice(lastIndex).trim();
+  if (remainingText) {
+    parts.push({ type: 'text', content: remainingText });
   }
 
   return parts;
 };
 
 /**
- * Nettoie le texte des balises XML
- * @param {string} text - Le texte à nettoyer
- * @returns {string} Le texte nettoyé
+ * Removes XML tags from text
+ *
+ * @param {string} text - The text to clean
+ * @returns {string} The cleaned text
+ *
+ * @example
+ * const clean = cleanText('<tag>content</tag>'); // returns "content"
  */
-export const cleanText = (text) => {
-  return text.replace(/<\/?[^>]+(>|$)/g, '').trim();
+export const cleanText = (text) => text.replace(/<\/?[^>]+(>|$)/g, '').trim();
+
+/**
+ * Validates that a response contains all required sections
+ *
+ * @param {ResponseSections} response - The parsed response sections
+ * @returns {boolean} True if the response is valid
+ */
+export const validateResponse = (response) => {
+  const requiredSections = ['answer'];
+  return requiredSections.every((section) => response[section] && response[section].length > 0);
 };
