@@ -1,3 +1,34 @@
+/**
+ * RAG (Retrieval Augmented Generation) Demo Server
+ *
+ * This server demonstrates how to build a RAG system that:
+ * 1. Indexes GitHub repositories
+ * 2. Processes queries using semantic search
+ * 3. Generates context-aware responses using LLMs
+ *
+ * Architecture Overview:
+ * - Express server handles HTTP requests
+ * - Qdrant vector database stores embeddings
+ * - HuggingFace provides embedding and LLM capabilities
+ * - Document processor handles text processing and embedding generation
+ *
+ * Required Environment Variables:
+ * - HF_TOKEN: HuggingFace API token
+ * - GITHUB_REPOS: JSON array of repository configurations
+ * - QDRANT_URL: Qdrant database URL (default: http://localhost:6333)
+ * - EMBEDDING_MODEL: HuggingFace embedding model (default: Xenova/multilingual-e5-large)
+ * - LLM_MODEL: HuggingFace LLM model (default: mistralai/Mixtral-8x7B-Instruct-v0.1)
+ * - REPOS_DIR: Local directory for cloned repositories (default: ./github_repos)
+ *
+ * @example GITHUB_REPOS format:
+ * [
+ *   {
+ *     "name": "Project Name",
+ *     "url": "https://github.com/owner/repo"
+ *   }
+ * ]
+ */
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -5,128 +36,164 @@ import { QdrantService } from './services/qdrant.js';
 import { DocumentProcessor } from './services/document-processor.js';
 import { LLMService } from './services/llm.js';
 
-// Charger les variables d'environnement
+// Load environment variables
 dotenv.config();
 
-// Vérifier que le token est présent
-if (!process.env.HF_TOKEN) {
-  console.error("⚠️ HF_TOKEN manquant dans les variables d'environnement");
-  process.exit(1);
-} else {
-  console.log("HF_TOKEN présent dans les variables d'environnement");
-}
+// Validate essential environment variables
+const validateEnvironment = () => {
+  if (!process.env.HF_TOKEN) {
+    console.error('❌ Missing HF_TOKEN in environment variables');
+    process.exit(1);
+  }
 
+  let parsedRepos;
+  try {
+    parsedRepos = process.env.GITHUB_REPOS ? JSON.parse(process.env.GITHUB_REPOS) : null;
+    if (!parsedRepos || !Array.isArray(parsedRepos) || parsedRepos.length === 0) {
+      throw new Error('Invalid or empty GITHUB_REPOS configuration');
+    }
+  } catch (error) {
+    console.error('❌ Error parsing GITHUB_REPOS:', error);
+    console.error('Current value:', process.env.GITHUB_REPOS);
+    process.exit(1);
+  }
+
+  return parsedRepos;
+};
+
+// Initialize Express application with middleware
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configuration
-let parsedRepos;
-try {
-  parsedRepos = process.env.GITHUB_REPOS ? JSON.parse(process.env.GITHUB_REPOS) : null;
-} catch (error) {
-  console.error('⚠️ Erreur de parsing du JSON dans GITHUB_REPOS:', error);
-  console.error('Valeur actuelle:', process.env.GITHUB_REPOS);
-  process.exit(1);
-}
-
-if (!parsedRepos) {
-  console.error('⚠️ Aucun dépôt configuré dans GITHUB_REPOS');
-  process.exit(1);
-}
-
+/**
+ * Server Configuration
+ * Centralizes all configurable parameters and dependencies
+ */
 const config = {
   qdrantUrl: process.env.QDRANT_URL || 'http://localhost:6333',
   embeddingModel: process.env.EMBEDDING_MODEL || 'Xenova/multilingual-e5-large',
   llmModel: process.env.LLM_MODEL || 'mistralai/Mixtral-8x7B-Instruct-v0.1',
   hfToken: process.env.HF_TOKEN,
-  repos: parsedRepos,
+  repos: validateEnvironment(),
   reposDir: process.env.REPOS_DIR || './github_repos',
 };
 
-// Vérifier la configuration au démarrage
-console.log('Configuration chargée :', {
+// Log configuration (excluding sensitive data)
+console.log('Server Configuration:', {
   ...config,
-  hfToken: config.hfToken ? '***' : 'NON DÉFINI ⚠️',
+  hfToken: '***',
 });
 
-// Initialiser les services
-const qdrant = new QdrantService(config.qdrantUrl);
-const documentProcessor = new DocumentProcessor(config.embeddingModel);
-const llm = new LLMService(config.llmModel, config.hfToken);
+/**
+ * Initialize Services
+ * Creates instances of core services required for RAG functionality
+ */
+const services = {
+  qdrant: new QdrantService(config.qdrantUrl),
+  documentProcessor: new DocumentProcessor(config.embeddingModel),
+  llm: new LLMService(config.llmModel, config.hfToken),
+};
 
-// Route de test pour vérifier que l'API fonctionne
+// Initialize document processor
+await services.documentProcessor.initialize();
+
+/**
+ * Health Check Endpoint
+ * Verifies API is running and services are initialized
+ */
 app.get('/', (req, res) => {
-  res.json({ message: 'API RAG is running' });
+  res.json({
+    status: 'healthy',
+    message: 'RAG API is operational',
+    version: '1.0.0',
+  });
 });
 
-// Initialiser le modèle d'embedding
-await documentProcessor.initialize();
-
+/**
+ * Question Answering Endpoint
+ * Processes natural language queries and returns AI-generated responses
+ *
+ * Request body: { question: string }
+ * Response: { answer: string, context?: string }
+ */
 app.post('/ask', async (req, res) => {
   try {
     const { question } = req.body;
-    console.log('Question reçue:', question);
 
-    if (!question || typeof question !== 'string') {
-      throw new Error('Question invalide');
+    // Input validation
+    if (!question?.trim()) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: 'Question is required',
+      });
     }
 
-    console.log("Début de la génération de l'embedding...");
-    const questionEmbedding = await documentProcessor.generateEmbedding(question);
-    console.log('Embedding généré');
+    // 1. Generate embedding for the question
+    console.log('Generating embedding for:', question);
+    const embedding = await services.documentProcessor.generateEmbedding(question);
 
-    console.log('Début de la recherche dans Qdrant...');
-    const searchResults = await qdrant.searchSimilar('github_code', questionEmbedding.data, 5);
-    console.log('Résultats de recherche:', searchResults.length);
+    // 2. Search for relevant documents
+    console.log('Searching similar documents...');
+    const searchResults = await services.qdrant.searchSimilar('github_code', embedding.data, 5);
 
-    if (!searchResults || searchResults.length === 0) {
-      throw new Error('Aucun résultat trouvé');
+    if (!searchResults?.length) {
+      return res.status(404).json({
+        error: 'No relevant information found',
+        details: 'Try rephrasing your question',
+      });
     }
 
+    // 3. Prepare context from search results
     const context = searchResults
       .map(
         (result) =>
-          `Fichier: ${result.payload.repo}/${result.payload.path}\n\nContenu:\n${result.payload.content}\n---`
+          `File: ${result.payload.repo}/${result.payload.path}\n\n` +
+          `Content:\n${result.payload.content}\n---`
       )
       .join('\n\n');
 
-    // Mise à jour de la génération de la liste des repos
+    // 4. Generate repository list for context
     const repoList = config.repos.map((repo) => `- ${repo.name}`).join('\n');
-    console.log('Liste des repos:', repoList);
 
-    const answer = await llm.generateAnswer(question, context, repoList);
-    console.log('Réponse générée');
+    // 5. Generate AI response
+    console.log('Generating answer...');
+    const answer = await services.llm.generateAnswer(question, context, repoList);
 
-    // Extraire l'URL du dépôt des résultats
-    const repoUrl = searchResults[0]?.payload?.repo || config.repos[0].url;
-
-    res.json({
-      answer,
-      context,
-      //   repoUrl, // Ajouter l'URL du dépôt à la réponse
-    });
+    // 6. Send response
+    res.json({ answer, context });
   } catch (error) {
-    console.error('Error détaillée:', error);
+    console.error('Error processing question:', error);
     res.status(500).json({
-      error: 'Une erreur est survenue',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
 
+/**
+ * Configuration Endpoint
+ * Returns public configuration data for client initialization
+ */
 app.get('/config', (req, res) => {
   res.json({
     repos: config.repos,
+    version: '1.0.0',
+    features: {
+      contextViewer: true,
+      codeHighlighting: true,
+    },
   });
 });
 
-const PORT = 3001;
+// Start server
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`API server running on http://localhost:${PORT}`);
-  console.log('Configuration:', {
-    ...config,
-    hfToken: '***', // Masquer le token dans les logs
-  });
+  console.log(`
+🚀 RAG Demo Server is running!
+📡 URL: http://localhost:${PORT}
+📚 Serving ${config.repos.length} repositories
+🔍 Using ${config.embeddingModel} for embeddings
+🤖 Using ${config.llmModel} for responses
+  `);
 });
