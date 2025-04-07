@@ -96,7 +96,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>RAG Assistant for AV's Projects</h1>
+      <h1>DEMO - RAG Assistant for AV's Projects</h1>
 
       {/* Repository Information Section */}
       {config && (

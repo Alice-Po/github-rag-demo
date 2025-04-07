@@ -6,12 +6,12 @@ import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import readline from 'readline';
 
-// Utilitaires de base
+// Basic utilities
 export const exec = promisify(execCallback);
 export const __filename = fileURLToPath(import.meta.url);
 export const __dirname = dirname(__filename);
 
-// Utilitaire pour créer l'interface readline
+// Utility to create readline interface
 export function createReadlineInterface() {
   return readline.createInterface({
     input: process.stdin,
@@ -19,12 +19,12 @@ export function createReadlineInterface() {
   });
 }
 
-// Utilitaires pour la gestion des fichiers
+// File management utilities
 export function getFileExtension(filename) {
   return path.extname(filename).toLowerCase();
 }
 
-// Configuration des extensions de fichiers
+// File extensions configuration
 export const FILE_EXTENSIONS = {
   code: [
     '.js',
@@ -45,43 +45,43 @@ export const FILE_EXTENSIONS = {
   exclude: ['.git', 'node_modules', '__pycache__', 'venv', 'dist', 'build'],
 };
 
-// Utilitaire pour vérifier si un fichier doit être traité
+// Utility to check if a file should be processed
 export function shouldProcessFile(filePath) {
   const ext = getFileExtension(filePath);
   return [...FILE_EXTENSIONS.code, ...FILE_EXTENSIONS.docs].includes(ext);
 }
 
-// Utilitaire pour vérifier si un dossier doit être exclu
+// Utility to check if a directory should be excluded
 export function shouldExcludeDirectory(dirName) {
   return FILE_EXTENSIONS.exclude.includes(dirName);
 }
 
-// Utilitaire pour la gestion des dépôts Git
+// Git repository management utility
 export async function gitCloneOrPull(repoUrl, repoPath) {
   const repoName = repoUrl.split('/').pop();
 
   if (!fs.existsSync(repoPath)) {
-    console.log(`Clonage de ${repoUrl}...`);
+    console.log(`Cloning ${repoUrl}...`);
     try {
       await exec(`git clone ${repoUrl} ${repoPath}`);
       return true;
     } catch (error) {
-      console.error(`Erreur lors du clonage de ${repoUrl}:`, error.message);
+      console.error(`Error cloning ${repoUrl}:`, error.message);
       return false;
     }
   } else {
-    console.log(`Mise à jour de ${repoName}...`);
+    console.log(`Updating ${repoName}...`);
     try {
       await exec(`cd ${repoPath} && git pull`);
       return true;
     } catch (error) {
-      console.error(`Erreur lors de la mise à jour de ${repoName}:`, error.message);
+      console.error(`Error updating ${repoName}:`, error.message);
       return false;
     }
   }
 }
 
-// Utilitaire pour la gestion des chunks de texte
+// Text chunk management utility
 export function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

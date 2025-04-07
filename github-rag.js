@@ -1,4 +1,3 @@
-// github-rag.js
 import { createReadlineInterface } from './utils.js';
 import { QdrantService } from './services/qdrant.js';
 import { DocumentProcessor } from './services/document-processor.js';
@@ -6,25 +5,22 @@ import { LLMService } from './services/llm.js';
 import { CodeIndexer } from './services/code-indexer.js';
 import dotenv from 'dotenv';
 
-// Charger les variables d'environnement
 dotenv.config();
 
-// Initialiser le tableau pour les chunks
 const chunks = [];
 
-// Configuration from environment variables
 let parsedRepos;
 try {
   parsedRepos = process.env.GITHUB_REPOS ? JSON.parse(process.env.GITHUB_REPOS) : null;
-  console.log('Dépôts configurés:', process.env.GITHUB_REPOS); // Debug
+  console.log('Configured repositories:', process.env.GITHUB_REPOS);
 } catch (error) {
-  console.error('⚠️ Erreur de parsing du JSON dans GITHUB_REPOS:', error);
-  console.error('Valeur actuelle:', process.env.GITHUB_REPOS);
+  console.error('⚠️ Error parsing JSON in GITHUB_REPOS:', error);
+  console.error('Current value:', process.env.GITHUB_REPOS);
   process.exit(1);
 }
 
 if (!parsedRepos) {
-  console.error('⚠️ Aucun dépôt configuré dans GITHUB_REPOS');
+  console.error('⚠️ No repositories configured in GITHUB_REPOS');
   process.exit(1);
 }
 
@@ -38,43 +34,43 @@ const config = {
 };
 
 async function main() {
-  console.log("Initialisation de l'assistant de code RAG éthique pour GitHub...");
+  console.log('Initializing ethical code RAG assistant for GitHub...');
 
   try {
-    // Initialisation des services
+    // Initialize services
     const qdrant = new QdrantService(config.qdrantUrl);
     const documentProcessor = new DocumentProcessor(config.embeddingModel);
     const llm = new LLMService(config.llmModel, config.hfToken);
     const codeIndexer = new CodeIndexer(config.reposDir);
 
-    // Indexation du code
+    // Code indexing
     await documentProcessor.initialize();
-    console.log('Indexation des dépôts...');
+    console.log('Indexing repositories...');
 
-    // Indexer chaque dépôt
+    // Index each repository
     for (const repo of config.repos) {
       try {
-        console.log(`Indexation du dépôt ${repo.name}...`);
+        console.log(`Indexing repository ${repo.name}...`);
         const documents = await codeIndexer.indexRepository(repo.url, repo.name);
-        
+
         if (!documents || documents.length === 0) {
-          console.warn(`⚠️ Aucun document trouvé pour ${repo.name}`);
+          console.warn(`⚠️ No documents found for ${repo.name}`);
           continue;
         }
-        
-        console.log(`📚 ${documents.length} documents trouvés dans ${repo.name}`);
+
+        console.log(`📚 ${documents.length} documents found in ${repo.name}`);
         const processedDocs = await documentProcessor.processDocuments(documents);
         chunks.push(...processedDocs);
       } catch (error) {
-        console.error(`❌ Erreur lors du traitement de ${repo.name}:`, error);
+        console.error(`❌ Error processing ${repo.name}:`, error);
       }
     }
 
-    // Préparation de la collection Qdrant
+    // Prepare Qdrant collection
     const collectionName = 'github_code';
     await qdrant.initializeCollection(collectionName);
 
-    // Traitement des documents par lots
+    // Process documents in batches
     const batchSize = parseInt(process.env.BATCH_SIZE) || 1;
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
@@ -86,10 +82,12 @@ async function main() {
         });
       }
       console.log(
-        `✅ Lot ${Math.floor(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)} traité`
+        `✅ Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+          chunks.length / batchSize
+        )} processed`
       );
 
-      // Attendre un peu entre les lots pour éviter la surcharge
+      // Wait between batches to avoid overload
       if (i + batchSize < chunks.length) {
         await new Promise((resolve) =>
           setTimeout(resolve, parseInt(process.env.DELAY_BETWEEN_BATCHES) || 500)
@@ -97,8 +95,8 @@ async function main() {
       }
     }
 
-    // Interface utilisateur
-    console.log("\nAssistant prêt! Posez vos questions (tapez 'exit' pour quitter):");
+    // User interface
+    console.log("\nAssistant ready! Ask your questions (type 'exit' to quit):");
     const readlineInterface = createReadlineInterface();
 
     const handleQuestion = async (question) => {
@@ -107,21 +105,21 @@ async function main() {
         return;
       }
 
-      console.log('Recherche en cours...');
+      console.log('Searching...');
       const questionEmbedding = await documentProcessor.generateEmbedding(question);
       const searchResults = await qdrant.searchSimilar(collectionName, questionEmbedding.data);
 
       const context = searchResults
         .map(
           (result) =>
-            `Fichier: ${result.payload.repo}/${result.payload.path}\n\nContenu:\n${result.payload.content}\n---`
+            `File: ${result.payload.repo}/${result.payload.path}\n\nContent:\n${result.payload.content}\n---`
         )
         .join('\n\n');
 
       const repoList = config.repos.map((repo) => `- ${repo.name}`).join('\n');
       const answer = await llm.generateAnswer(question, context, repoList);
 
-      console.log('\nRéponse:');
+      console.log('\nAnswer:');
       console.log(answer);
 
       readlineInterface.question('\nQuestion: ', handleQuestion);
@@ -129,7 +127,7 @@ async function main() {
 
     readlineInterface.question('\nQuestion: ', handleQuestion);
   } catch (error) {
-    console.error('Une erreur est survenue:', error);
+    console.error('An error occurred:', error);
   }
 }
 

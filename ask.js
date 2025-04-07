@@ -4,25 +4,25 @@ import { DocumentProcessor } from './services/document-processor.js';
 import { LLMService } from './services/llm.js';
 import dotenv from 'dotenv';
 
-// Charger les variables d'environnement de .env et .env.local
+// Load environment variables from .env and .env.local
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local' });
 
-// Parser la configuration des dépôts
+// Parse repositories configuration
 let parsedRepos;
 try {
   parsedRepos = process.env.GITHUB_REPOS ? JSON.parse(process.env.GITHUB_REPOS) : null;
 } catch (error) {
-  console.error('⚠️ Erreur de parsing du JSON dans GITHUB_REPOS:', error);
+  console.error('⚠️ Error parsing JSON in GITHUB_REPOS:', error);
   process.exit(1);
 }
 
 if (!parsedRepos) {
-  console.error('⚠️ Aucun dépôt configuré dans GITHUB_REPOS');
+  console.error('⚠️ No repositories configured in GITHUB_REPOS');
   process.exit(1);
 }
 
-// Configuration depuis les variables d'environnement
+// Configuration from environment variables
 const config = {
   qdrantUrl: process.env.QDRANT_URL,
   repos: parsedRepos,
@@ -32,69 +32,69 @@ const config = {
 };
 
 /**
- * Démarre une session de questions-réponses avec l'assistant
+ * Starts a Q&A session with the assistant
  */
 async function startQASession() {
-  console.log("Initialisation de l'assistant...");
+  console.log('Initializing assistant...');
 
   try {
-    // Initialisation des services nécessaires
+    // Initialize required services
     const qdrant = new QdrantService(config.qdrantUrl);
     const documentProcessor = new DocumentProcessor(config.embeddingModel);
     const llm = new LLMService(config.llmModel, config.hfToken);
 
-    // Initialisation du modèle d'embedding
+    // Initialize embedding model
     await documentProcessor.initialize();
 
-    console.log("\nAssistant prêt! Posez vos questions (tapez 'exit' pour quitter):");
+    console.log("\nAssistant ready! Ask your questions (type 'exit' to quit):");
     const readlineInterface = createReadlineInterface();
 
     const handleQuestion = async (question) => {
       if (question.toLowerCase() === 'exit') {
-        console.log('\nAu revoir! 👋');
+        console.log('\nGoodbye! 👋');
         readlineInterface.close();
         return;
       }
 
       try {
-        console.log('\nRecherche en cours...');
-        // Générer l'embedding de la question
+        console.log('\nSearching...');
+        // Generate question embedding
         const questionEmbedding = await documentProcessor.generateEmbedding(question);
 
-        // Rechercher les documents pertinents
+        // Search for relevant documents
         const searchResults = await qdrant.searchSimilar('github_code', questionEmbedding.data);
 
-        // Construire le contexte à partir des résultats
+        // Build context from results
         const context = searchResults
           .map(
             (result) =>
-              `Fichier: ${result.payload.repo}/${result.payload.path}\n\nContenu:\n${result.payload.content}\n---`
+              `File: ${result.payload.repo}/${result.payload.path}\n\nContent:\n${result.payload.content}\n---`
           )
           .join('\n\n');
 
-        // Préparer la liste des dépôts pour le contexte
+        // Prepare repository list for context
         const repoList = config.repos.map((repo) => `- ${repo.name}`).join('\n');
 
-        // Générer la réponse
+        // Generate response
         const answer = await llm.generateAnswer(question, context, repoList);
 
-        console.log('\nRéponse:');
+        console.log('\nAnswer:');
         console.log(answer);
       } catch (error) {
-        console.error('\nErreur lors du traitement de la question:', error.message);
+        console.error('\nError processing question:', error.message);
       }
 
-      // Prêt pour la prochaine question
+      // Ready for next question
       readlineInterface.question('\nQuestion: ', handleQuestion);
     };
 
-    // Démarrer la première interaction
+    // Start first interaction
     readlineInterface.question('\nQuestion: ', handleQuestion);
   } catch (error) {
-    console.error("Une erreur est survenue lors de l'initialisation:", error);
+    console.error('An error occurred during initialization:', error);
     process.exit(1);
   }
 }
 
-// Démarrer la session
+// Start the session
 startQASession();

@@ -2,14 +2,14 @@ FROM node:18
 
 WORKDIR /app
 
-# Copier les fichiers de dépendances
+# Copy dependency files
 COPY package*.json ./
 
-# Installer les dépendances
+# Install dependencies
 RUN npm install
 
-# Copier le reste du code
+# Copy remaining code
 COPY . .
 
-# Commande par défaut
+# Default command
 CMD ["node", "github-rag.js"]

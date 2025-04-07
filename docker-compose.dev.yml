@@ -1,5 +1,5 @@
 services:
-  # Service pour la base vectorielle Qdrant
+  # Qdrant vector database service
   qdrant:
     image: qdrant/qdrant
     ports:
