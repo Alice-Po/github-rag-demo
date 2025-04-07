@@ -2,14 +2,33 @@ import { createReadlineInterface } from './utils.js';
 import { QdrantService } from './services/qdrant.js';
 import { DocumentProcessor } from './services/document-processor.js';
 import { LLMService } from './services/llm.js';
+import dotenv from 'dotenv';
 
-// Configuration en dur pour les tests
+// Charger les variables d'environnement de .env et .env.local
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local' });
+
+// Parser la configuration des dépôts
+let parsedRepos;
+try {
+  parsedRepos = process.env.GITHUB_REPOS ? JSON.parse(process.env.GITHUB_REPOS) : null;
+} catch (error) {
+  console.error('⚠️ Erreur de parsing du JSON dans GITHUB_REPOS:', error);
+  process.exit(1);
+}
+
+if (!parsedRepos) {
+  console.error('⚠️ Aucun dépôt configuré dans GITHUB_REPOS');
+  process.exit(1);
+}
+
+// Configuration depuis les variables d'environnement
 const config = {
-  qdrantUrl: 'http://localhost:6333',
-  repos: ['https://github.com/activitypods/activitypods'],
-  embeddingModel: 'Xenova/multilingual-e5-large',
-  llmModel: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
-  hfToken: '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', // Remplacez par votre vrai token
+  qdrantUrl: process.env.QDRANT_URL,
+  repos: parsedRepos,
+  embeddingModel: process.env.EMBEDDING_MODEL,
+  llmModel: process.env.LLM_MODEL,
+  hfToken: process.env.HF_TOKEN,
 };
 
 /**
@@ -54,7 +73,7 @@ async function startQASession() {
           .join('\n\n');
 
         // Préparer la liste des dépôts pour le contexte
-        const repoList = config.repos.map((repo) => `- ${repo.split('/').pop()}`).join('\n');
+        const repoList = config.repos.map((repo) => `- ${repo.name}`).join('\n');
 
         // Générer la réponse
         const answer = await llm.generateAnswer(question, context, repoList);
