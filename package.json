@@ -1,7 +1,7 @@
 {
-  "name": "github-rag-ethical",
+  "name": "github-rag",
   "version": "1.0.0",
-  "description": "A RAG initiative for AV project base on open source et european projects",
+  "description": "A RAG demo for AV project",
   "main": "github-rag.js",
   "type": "module",
   "scripts": {
@@ -19,13 +19,6 @@
     "express": "^4.21.2",
     "langchain": "^0.1.21"
   },
-  "keywords": [
-    "rag",
-    "github",
-    "code-assistant",
-    "ethical-ai",
-    "open-source"
-  ],
   "author": "",
   "license": "MIT"
 }

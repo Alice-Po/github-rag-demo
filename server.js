@@ -41,7 +41,7 @@ dotenv.config();
 
 // Validate essential environment variables
 const validateEnvironment = () => {
-  if (!process.env.HF_TOKEN) {
+if (!process.env.HF_TOKEN) {
     console.error('❌ Missing HF_TOKEN in environment variables');
     process.exit(1);
   }
@@ -55,8 +55,8 @@ const validateEnvironment = () => {
   } catch (error) {
     console.error('❌ Error parsing GITHUB_REPOS:', error);
     console.error('Current value:', process.env.GITHUB_REPOS);
-    process.exit(1);
-  }
+  process.exit(1);
+}
 
   return parsedRepos;
 };
