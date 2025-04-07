@@ -60,5 +60,5 @@ npm run api
 ### Start the frontend
 
 ```bash
-cd frontend && npm run dev
+npm run frontend
 ```
